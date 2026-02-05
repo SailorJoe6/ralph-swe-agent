@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ralph-swe-agent"
+version = "0.1.0"
+description = "Thin extension layer over mini-swe-agent with custom SWE-bench runner hooks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pyyaml",
+  "requests",
+  "jinja2",
+  "pydantic>=2.0",
+  "litellm>=1.75.5",
+  "tenacity",
+  "rich",
+  "python-dotenv",
+  "typer",
+  "platformdirs",
+  "textual",
+  "prompt_toolkit",
+  "datasets",
+  "openai!=1.100.0,!=1.100.1",
+]
+
+[project.scripts]
+mini = "ralph_swe_agent.mini:main"
+mini-swe-agent = "ralph_swe_agent.mini:main"
+mini-extra = "ralph_swe_agent.mini_extra:main"
+mini-e = "ralph_swe_agent.mini_extra:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ralph_swe_agent*"]
