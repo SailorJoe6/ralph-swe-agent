@@ -1,7 +1,8 @@
 """Tests for ralph-swe-agent's custom SWE-bench runner.
 
 Covers the live trajectory streaming lifecycle managed by
-``ralphsweagent.run.benchmarks.swebench.process_instance``.
+``ralphsweagent.run.benchmarks.swebench.process_instance``
+and the ``docker_image`` field fallback monkeypatch.
 """
 
 import json
@@ -21,6 +22,9 @@ from minisweagent.environments.local import LocalEnvironment
 
 # Ensure enhancements are registered so DefaultAgent has set_live_trajectory_path.
 register_agent_enhancements()
+
+# Import the monkeypatched function (module-level monkeypatch runs on import).
+from minisweagent.run.benchmarks import swebench as base_swebench
 
 
 class SlowExitModel:
@@ -156,3 +160,44 @@ def test_live_trajectory_jsonl_content(tmp_path):
         obj = json.loads(line)
         assert "role" in obj
         assert "content" in obj
+
+
+# ---------------------------------------------------------------------------
+# docker_image fallback monkeypatch tests
+# ---------------------------------------------------------------------------
+
+# Importing swebench.py triggers the module-level monkeypatch, so
+# base_swebench.get_swebench_docker_image_name is already patched.
+
+def _get_docker_image(instance: dict) -> str:
+    """Helper — calls the (monkeypatched) function via the base module."""
+    return base_swebench.get_swebench_docker_image_name(instance)
+
+
+def test_docker_image_uses_image_name():
+    """image_name takes priority when present."""
+    instance = {"image_name": "custom/image:tag", "instance_id": "test__repo__1"}
+    assert _get_docker_image(instance) == "custom/image:tag"
+
+
+def test_docker_image_fallback():
+    """docker_image is used when image_name is absent."""
+    instance = {"docker_image": "live/image:tag", "instance_id": "test__repo__1"}
+    assert _get_docker_image(instance) == "live/image:tag"
+
+
+def test_docker_image_prefers_image_name():
+    """image_name wins when both fields are present."""
+    instance = {
+        "image_name": "custom/image:tag",
+        "docker_image": "live/image:tag",
+        "instance_id": "test__repo__1",
+    }
+    assert _get_docker_image(instance) == "custom/image:tag"
+
+
+def test_docker_image_constructs_from_instance_id():
+    """When neither field is present, the name is constructed from instance_id."""
+    instance = {"instance_id": "swe-agent__test-repo__1"}
+    expected = "docker.io/swebench/sweb.eval.x86_64.swe-agent_1776_test-repo_1776_1:latest"
+    assert _get_docker_image(instance) == expected

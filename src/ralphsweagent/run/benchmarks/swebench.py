@@ -109,3 +109,18 @@ def process_instance(
 register_model_overrides()
 register_agent_enhancements()
 base_swebench.process_instance = process_instance
+
+# Preserve docker_image fallback for SWE-bench-Live MultiLang datasets.
+# Upstream dropped the docker_image field check; we restore it here so that
+# instances providing docker_image instead of image_name still resolve correctly.
+_original_get_docker_image = base_swebench.get_swebench_docker_image_name
+
+
+def _get_docker_image_with_fallback(instance: dict) -> str:
+    image_name = instance.get("image_name") or instance.get("docker_image")
+    if not image_name:
+        return _original_get_docker_image(instance)
+    return image_name
+
+
+base_swebench.get_swebench_docker_image_name = _get_docker_image_with_fallback

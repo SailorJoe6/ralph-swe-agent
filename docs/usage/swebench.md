@@ -26,6 +26,16 @@ model_kwargs:
 This agent enables `require_reasoning` on the model config.
 It does **not** force `tool_choice: required`; set that explicitly in model config if desired.
 
+## Dataset Compatibility
+
+The runner accepts both `image_name` and `docker_image` fields from SWE-bench
+instance data.  Standard SWE-bench datasets use `image_name`, while
+SWE-bench-Live MultiLang instances provide `docker_image` instead.
+
+When both fields are present, `image_name` takes priority.  If neither is set,
+the image name is constructed from the `instance_id` using the upstream
+convention (`docker.io/swebench/sweb.eval.x86_64.<id>:latest`).
+
 ## Ready-Made Config
 
 You can start from:
