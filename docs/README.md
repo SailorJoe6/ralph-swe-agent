@@ -5,5 +5,6 @@ This folder contains documentation for behavior that is custom to `ralph-swe-age
 ## Index
 
 - `usage/swebench.md` — SWE-bench usage notes for ralph runner behavior.
+- `usage/output_files.md` — Output files: trajectories, live JSONL streaming, predictions.
 - `advanced/yaml_configuration.md` — YAML configuration notes for ralph custom agent/model options.
 - `advanced/global_configuration.md` — Context window tracking and global settings.

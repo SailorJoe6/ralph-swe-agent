@@ -1,8 +1,8 @@
 """Monkeypatch DefaultAgent with ralph-swe-agent enhancements.
 
-This module adds context window tracking to DefaultAgent so all agent classes
-(default, interactive, reasoning_tool_call) inherit the behavior regardless
-of which class is resolved from config.
+This module adds context window tracking and live trajectory streaming to
+DefaultAgent so all agent classes (default, interactive, reasoning_tool_call)
+inherit the behavior regardless of which class is resolved from config.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ _patched = False
 
 
 def register_agent_enhancements() -> None:
-    """Monkeypatch DefaultAgent with context window tracking.
+    """Monkeypatch DefaultAgent with context window tracking and live trajectory streaming.
 
     Safe to call multiple times; only patches once.
     """
@@ -27,18 +27,49 @@ def register_agent_enhancements() -> None:
         return
     _patched = True
 
+    import json
+    from pathlib import Path
+
     from minisweagent.agents.default import DefaultAgent
+    from minisweagent.utils.serialize import to_jsonable
 
     _original_init = DefaultAgent.__init__
     _original_run = DefaultAgent.run
     _original_query = DefaultAgent.query
     _original_get_template_vars = DefaultAgent.get_template_vars
+    _original_add_messages = DefaultAgent.add_messages
 
     def _patched_init(self, *args, **kwargs):
         _original_init(self, *args, **kwargs)
         self.context_window_max: int | None = None
         self.context_window_prompt_tokens: int | None = None
         self.context_left_percent: int | None = None
+        self._live_trajectory_path: Path | None = None
+
+    def _set_live_trajectory_path(self, path: Path | None) -> None:
+        """Set a live JSONL trajectory path and clear any existing file."""
+        self._live_trajectory_path = path
+        if not path:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.unlink(missing_ok=True)
+        except Exception as exc:
+            self.logger.warning("Failed to initialize live trajectory file %s: %s", path, exc)
+
+    def _patched_add_messages(self, *messages: dict) -> list[dict]:
+        result = _original_add_messages(self, *messages)
+        if self._live_trajectory_path:
+            try:
+                self._live_trajectory_path.parent.mkdir(parents=True, exist_ok=True)
+                with self._live_trajectory_path.open("a", encoding="utf-8") as handle:
+                    for message in messages:
+                        handle.write(json.dumps(to_jsonable(message)) + "\n")
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to write live trajectory to %s: %s", self._live_trajectory_path, exc
+                )
+        return result
 
     def _patched_get_template_vars(self, **kwargs):
         base = _original_get_template_vars(self, **kwargs)
@@ -156,6 +187,8 @@ def register_agent_enhancements() -> None:
     DefaultAgent.run = _patched_run
     DefaultAgent.query = _patched_query
     DefaultAgent.get_template_vars = _patched_get_template_vars
+    DefaultAgent.add_messages = _patched_add_messages
+    DefaultAgent.set_live_trajectory_path = _set_live_trajectory_path
     DefaultAgent.context_window_mode = "auto"
     DefaultAgent._resolve_context_window_max = _resolve_context_window_max
     DefaultAgent._prompt_for_context_window = _prompt_for_context_window
