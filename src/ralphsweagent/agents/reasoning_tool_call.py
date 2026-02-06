@@ -18,3 +18,5 @@ class ReasoningToolCallAgent(DefaultAgent):
             return
         if hasattr(config, "require_reasoning"):
             config.require_reasoning = True
+        if hasattr(config, "retry_missing_tool_calls"):
+            config.retry_missing_tool_calls = True

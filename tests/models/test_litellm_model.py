@@ -265,3 +265,106 @@ class TestLitellmModel:
         result = model.query([{"role": "user", "content": "test"}])
 
         assert result["content"] == "Hello world</final>"
+
+
+class TestRetryMissingToolCalls:
+    """Tests for the graceful tool-call recovery feature."""
+
+    @staticmethod
+    def _valid_tool_call():
+        tc = MagicMock()
+        tc.function.name = "bash"
+        tc.function.arguments = '{"command": "echo hello"}'
+        tc.id = "call_retry"
+        return tc
+
+    @patch("ralphsweagent.models.litellm_model.litellm.completion")
+    @patch("ralphsweagent.models.litellm_model.litellm.cost_calculator.completion_cost")
+    def test_retry_missing_tool_calls_succeeds(self, mock_cost, mock_completion):
+        """First call returns no tool calls, retry returns valid tool call."""
+        no_tools_resp = _mock_litellm_response(None)
+        no_tools_resp.choices[0].message.model_dump.return_value = {
+            "role": "assistant",
+            "content": "Let me think about this...",
+        }
+        valid_resp = _mock_litellm_response([self._valid_tool_call()])
+        mock_completion.side_effect = [no_tools_resp, valid_resp]
+        mock_cost.return_value = 0.001
+
+        model = LitellmModel(model_name="gpt-4", retry_missing_tool_calls=True)
+        messages = [{"role": "user", "content": "test"}]
+        result = model.query(messages)
+
+        # Should succeed without raising FormatError
+        assert result["extra"]["actions"] == [{"command": "echo hello", "tool_call_id": "call_retry"}]
+        # Cost should include both calls
+        assert result["extra"]["cost"] == 0.002
+        # litellm.completion called twice (original + retry)
+        assert mock_completion.call_count == 2
+        # Nudge messages should remain in messages list
+        assert len(messages) == 3  # original + assistant + nudge
+        assert messages[1]["role"] == "assistant"
+        assert messages[2]["role"] == "user"
+        assert messages[2]["content"] == "You must respond using the bash tool."
+        # Retry call should have tool_choice="required"
+        assert mock_completion.call_args_list[1].kwargs["tool_choice"] == "required"
+
+    @patch("ralphsweagent.models.litellm_model.litellm.completion")
+    @patch("ralphsweagent.models.litellm_model.litellm.cost_calculator.completion_cost")
+    def test_retry_missing_tool_calls_fails(self, mock_cost, mock_completion):
+        """First call returns no tool calls, retry also returns no tool calls."""
+        no_tools_resp1 = _mock_litellm_response(None)
+        no_tools_resp1.choices[0].message.model_dump.return_value = {
+            "role": "assistant",
+            "content": "Thinking...",
+        }
+        no_tools_resp2 = _mock_litellm_response(None)
+        no_tools_resp2.choices[0].message.model_dump.return_value = {
+            "role": "assistant",
+            "content": "Still thinking...",
+        }
+        mock_completion.side_effect = [no_tools_resp1, no_tools_resp2]
+        mock_cost.return_value = 0.001
+
+        model = LitellmModel(model_name="gpt-4", retry_missing_tool_calls=True)
+        messages = [{"role": "user", "content": "test"}]
+        with pytest.raises(FormatError):
+            model.query(messages)
+
+        # litellm.completion called twice
+        assert mock_completion.call_count == 2
+        # Messages should be restored (nudge messages removed)
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "test"}
+
+    @patch("ralphsweagent.models.litellm_model.litellm.completion")
+    @patch("ralphsweagent.models.litellm_model.litellm.cost_calculator.completion_cost")
+    def test_retry_skipped_when_tool_choice_required(self, mock_cost, mock_completion):
+        """tool_choice='required' in config — no retry, FormatError raised immediately."""
+        mock_completion.return_value = _mock_litellm_response(None)
+        mock_cost.return_value = 0.001
+
+        model = LitellmModel(
+            model_name="gpt-4",
+            retry_missing_tool_calls=True,
+            tool_choice="required",
+        )
+        with pytest.raises(FormatError):
+            model.query([{"role": "user", "content": "test"}])
+
+        # Only one call (no retry)
+        assert mock_completion.call_count == 1
+
+    @patch("ralphsweagent.models.litellm_model.litellm.completion")
+    @patch("ralphsweagent.models.litellm_model.litellm.cost_calculator.completion_cost")
+    def test_retry_skipped_when_flag_disabled(self, mock_cost, mock_completion):
+        """retry_missing_tool_calls=False (default) — no retry, FormatError raised immediately."""
+        mock_completion.return_value = _mock_litellm_response(None)
+        mock_cost.return_value = 0.001
+
+        model = LitellmModel(model_name="gpt-4")  # default: retry_missing_tool_calls=False
+        with pytest.raises(FormatError):
+            model.query([{"role": "user", "content": "test"}])
+
+        # Only one call (no retry)
+        assert mock_completion.call_count == 1

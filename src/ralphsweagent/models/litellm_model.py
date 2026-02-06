@@ -117,6 +117,8 @@ class LitellmModelConfig(BaseModel):
     """Tool choice configuration passed to the API (e.g., "required")."""
     require_reasoning: bool = False
     """Require non-empty reasoning in bash tool calls."""
+    retry_missing_tool_calls: bool = False
+    """When True, retry once with tool_choice='required' before raising FormatError on missing tool calls."""
     format_error_template: str = "{{ error }}"
     """Template used when the LM's output is not in the expected format."""
     observation_template: str = (
@@ -341,7 +343,51 @@ class LitellmModel:
         try:
             actions = self._parse_actions(response)
         except FormatError as e:
-            # Preserve raw assistant response for debugging (appears in live + final trajectories)
+            # Check if eligible for graceful retry (missing tool calls only)
+            original_tool_calls = response.choices[0].message.tool_calls
+            if (
+                not original_tool_calls
+                and self.config.retry_missing_tool_calls
+                and self.config.tool_choice != "required"
+                and self.config.model_kwargs.get("tool_choice") != "required"
+            ):
+                # Append failed response + nudge to conversation (visible in trajectory)
+                nudge_messages = [
+                    {"role": "assistant", "content": message.get("content")},
+                    {"role": "user", "content": "You must respond using the bash tool."},
+                ]
+                messages.extend(nudge_messages)
+                try:
+                    # Retry with tool_choice="required" (one-shot override)
+                    saved_tool_choice = self.config.tool_choice
+                    self.config.tool_choice = "required"
+                    try:
+                        for retry_attempt in retry(
+                            logger=logger, abort_exceptions=self.abort_exceptions
+                        ):
+                            with retry_attempt:
+                                retry_response = self._query(
+                                    self._prepare_messages_for_api(messages), **kwargs
+                                )
+                    finally:
+                        self.config.tool_choice = saved_tool_choice
+                    retry_cost = self._calculate_cost(retry_response)
+                    GLOBAL_MODEL_STATS.add(retry_cost["cost"])
+                    retry_message = retry_response.choices[0].message.model_dump()
+                    retry_actions = self._parse_actions(retry_response)
+                    # Retry succeeded
+                    retry_message["extra"] = {
+                        "actions": retry_actions,
+                        "response": retry_response.model_dump(),
+                        "cost": cost_output["cost"] + retry_cost["cost"],
+                        "timestamp": time.time(),
+                    }
+                    return retry_message
+                except FormatError:
+                    # Retry also failed — undo message modifications, fall through
+                    del messages[-2:]
+
+            # Original error path (unchanged)
             debug_message = {
                 "role": "assistant",
                 "content": message.get("content"),
