@@ -16,6 +16,7 @@ from ralphsweagent._bootstrap import ensure_vendor_minisweagent_on_path
 ensure_vendor_minisweagent_on_path()
 
 from ralphsweagent.agents import resolve_agent_class
+from ralphsweagent.agents.enhancements import register_agent_enhancements
 from ralphsweagent.models import register_model_overrides
 
 from minisweagent import global_config_dir
@@ -62,6 +63,7 @@ def main(
 ) -> Any:
     # fmt: on
     register_model_overrides()
+    register_agent_enhancements()
     configure_if_first_time()
 
     console.print(f"Building agent config from specs: [bold green]{config_spec}[/bold green]")

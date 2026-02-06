@@ -12,6 +12,7 @@ from ralphsweagent._bootstrap import ensure_vendor_minisweagent_on_path
 ensure_vendor_minisweagent_on_path()
 
 from ralphsweagent.agents import resolve_agent_class
+from ralphsweagent.agents.enhancements import register_agent_enhancements
 from ralphsweagent.models import register_model_overrides
 
 from minisweagent import global_config_dir
@@ -62,6 +63,7 @@ def main(
 ) -> None:
     # fmt: on
     register_model_overrides()
+    register_agent_enhancements()
     dataset_path = DATASET_MAPPING.get(subset, subset)
     logger.info(f"Loading dataset from {dataset_path}, split {split}...")
     instances = {inst["instance_id"]: inst for inst in load_dataset(dataset_path, split=split)}  # type: ignore

@@ -1,0 +1,25 @@
+# Seeded model context window map.
+# Users can edit the live copy in their global config directory.
+# Values are max tokens for the model's context window.
+
+gpt-4o: 128000
+gpt-4o-mini: 128000
+gpt-4.1: 128000
+gpt-4.1-mini: 128000
+gpt-4-turbo: 128000
+gpt-4-32k: 32768
+gpt-4: 8192
+
+claude-3-5-sonnet: 200000
+claude-3-5-haiku: 200000
+claude-3-opus: 200000
+
+gemini-1.5-pro: 2000000
+gemini-1.5-flash: 1000000
+
+llama-3.1-70b-instruct: 131072
+llama-3.1-8b-instruct: 131072
+qwen2.5-72b-instruct: 131072
+qwen3-coder-30b-a3b-instruct: 262144
+qwen3-coder-30b-a3b-instruct-fp8: 262144
+deterministic: 8192

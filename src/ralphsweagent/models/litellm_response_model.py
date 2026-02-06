@@ -12,7 +12,7 @@ from ralphsweagent.models.utils.actions_toolcall_response import (
     format_toolcall_observation_messages,
     parse_toolcall_actions_response,
 )
-from minisweagent.models.utils.openai_utils import coerce_responses_text
+from ralphsweagent.models.utils.openai_utils import coerce_responses_text
 from minisweagent.models.utils.retry import retry
 
 logger = logging.getLogger("litellm_response_model")

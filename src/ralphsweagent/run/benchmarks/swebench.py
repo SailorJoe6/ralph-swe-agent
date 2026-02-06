@@ -10,6 +10,7 @@ from ralphsweagent._bootstrap import ensure_vendor_minisweagent_on_path
 ensure_vendor_minisweagent_on_path()
 
 from ralphsweagent.agents import resolve_agent_class
+from ralphsweagent.agents.enhancements import register_agent_enhancements
 from ralphsweagent.models import register_model_overrides
 
 from minisweagent.models import get_model
@@ -106,4 +107,5 @@ def process_instance(
 
 # Monkeypatch upstream runner so `mini-extra swebench` options/behavior stay compatible.
 register_model_overrides()
+register_agent_enhancements()
 base_swebench.process_instance = process_instance
