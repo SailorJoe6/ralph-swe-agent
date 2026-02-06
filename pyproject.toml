@@ -26,11 +26,18 @@ dependencies = [
 ]
 
 [project.scripts]
-mini = "ralph_swe_agent.mini:main"
-mini-swe-agent = "ralph_swe_agent.mini:main"
-mini-extra = "ralph_swe_agent.mini_extra:main"
-mini-e = "ralph_swe_agent.mini_extra:main"
+mini = "ralphsweagent.run.mini:app"
+mini-swe-agent = "ralphsweagent.run.mini:app"
+mini-extra = "ralphsweagent.run.utilities.mini_extra:main"
+mini-e = "ralphsweagent.run.utilities.mini_extra:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ralph_swe_agent*"]
+include = ["ralphsweagent*"]
+
+[tool.setuptools.package-data]
+ralphsweagent = ["config/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 90

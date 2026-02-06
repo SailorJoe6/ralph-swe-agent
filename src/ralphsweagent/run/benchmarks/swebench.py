@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import importlib
-import inspect
 import traceback
 from pathlib import Path
 
-from ._bootstrap import ensure_vendor_minisweagent_on_path
+from ralphsweagent._bootstrap import ensure_vendor_minisweagent_on_path
 
 ensure_vendor_minisweagent_on_path()
 
-from minisweagent.agents.default import DefaultAgent
+from ralphsweagent.agents import resolve_agent_class
+from ralphsweagent.models import register_model_overrides
+
 from minisweagent.models import get_model
 from minisweagent.run.benchmarks import swebench as base_swebench
 from minisweagent.utils.log import logger
@@ -19,25 +19,23 @@ from minisweagent.utils.log import logger
 app = base_swebench.app
 
 
-def _resolve_agent_class(spec: str | None) -> type[DefaultAgent]:
-    if not spec:
-        return base_swebench.ProgressTrackingAgent
-    module_name, class_name = spec.rsplit(".", 1)
-    module = importlib.import_module(module_name)
-    agent_cls = getattr(module, class_name)
-    if not issubclass(agent_cls, DefaultAgent):
-        raise TypeError(f"run.agent_class must inherit DefaultAgent, got: {spec}")
-    return agent_cls
+def _wrap_with_progress(agent_class: type) -> type:
+    if issubclass(agent_class, base_swebench.ProgressTrackingAgent):
+        return agent_class
 
+    class ProgressAgent(agent_class):
+        def __init__(self, *args, progress_manager, instance_id: str = "", **kwargs):
+            super().__init__(*args, **kwargs)
+            self.progress_manager = progress_manager
+            self.instance_id = instance_id
 
-def _supports_kwarg(func, name: str) -> bool:
-    try:
-        signature = inspect.signature(func)
-    except (TypeError, ValueError):
-        return False
-    if name in signature.parameters:
-        return True
-    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
+        def step(self) -> dict:
+            self.progress_manager.update_instance_status(
+                self.instance_id, f"Step {self.n_calls + 1:3d} (${self.cost:.2f})"
+            )
+            return super().step()
+
+    return ProgressAgent
 
 
 def process_instance(
@@ -46,11 +44,14 @@ def process_instance(
     config: dict,
     progress_manager,
 ) -> None:
-    """Drop-in replacement for upstream process_instance with configurable agent class."""
+    """Copy of upstream process_instance, kept here for monkeypatch customization."""
     instance_id = instance["instance_id"]
     instance_dir = output_dir / instance_id
+    instance_dir.mkdir(parents=True, exist_ok=True)
+    live_traj_path = instance_dir / f"{instance_id}.traj.jsonl"
     base_swebench.remove_from_preds_file(output_dir / "preds.json", instance_id)
     (instance_dir / f"{instance_id}.traj.json").unlink(missing_ok=True)
+    live_traj_path.unlink(missing_ok=True)
     model = get_model(config=config.get("model", {}))
     task = instance["problem_statement"]
 
@@ -64,13 +65,18 @@ def process_instance(
 
     try:
         env = base_swebench.get_sb_environment(config, instance)
-        agent_cls = _resolve_agent_class(config.get("run", {}).get("agent_class"))
-        agent_kwargs = dict(config.get("agent", {}))
-        if _supports_kwarg(agent_cls.__init__, "progress_manager"):
-            agent_kwargs["progress_manager"] = progress_manager
-        if _supports_kwarg(agent_cls.__init__, "instance_id"):
-            agent_kwargs["instance_id"] = instance_id
-        agent = agent_cls(model, env, **agent_kwargs)
+        agent_config = dict(config.get("agent", {}))
+        agent_class_spec = agent_config.pop("agent_class", None)
+        base_agent_class = resolve_agent_class(agent_class_spec, default=base_swebench.ProgressTrackingAgent)
+        agent_class = _wrap_with_progress(base_agent_class)
+        agent = agent_class(
+            model,
+            env,
+            progress_manager=progress_manager,
+            instance_id=instance_id,
+            **agent_config,
+        )
+        agent.set_live_trajectory_path(live_traj_path)
         info = agent.run(task)
         exit_status = info.get("exit_status")
         result = info.get("submission")
@@ -93,9 +99,11 @@ def process_instance(
                 },
             )
             logger.info(f"Saved trajectory to '{traj_path}'")
+            live_traj_path.unlink(missing_ok=True)
         base_swebench.update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)
         progress_manager.on_instance_end(instance_id, exit_status)
 
 
 # Monkeypatch upstream runner so `mini-extra swebench` options/behavior stay compatible.
+register_model_overrides()
 base_swebench.process_instance = process_instance

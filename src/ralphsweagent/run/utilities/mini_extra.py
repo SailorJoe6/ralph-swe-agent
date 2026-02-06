@@ -8,13 +8,21 @@ from importlib import import_module
 
 from rich.console import Console
 
-from ._bootstrap import ensure_vendor_minisweagent_on_path
+from ralphsweagent._bootstrap import ensure_vendor_minisweagent_on_path
 
 subcommands = [
     ("minisweagent.run.utilities.config", ["config"], "Manage the global config file"),
     ("minisweagent.run.utilities.inspector", ["inspect", "i", "inspector"], "Run inspector (browse trajectories)"),
-    ("ralph_swe_agent.swebench", ["swebench"], "Evaluate on SWE-bench (batch mode, configurable agent class)"),
-    ("minisweagent.run.benchmarks.swebench_single", ["swebench-single"], "Evaluate on SWE-bench (single instance)"),
+    (
+        "ralphsweagent.run.benchmarks.swebench",
+        ["swebench"],
+        "Evaluate on SWE-bench (batch mode, configurable agent class)",
+    ),
+    (
+        "ralphsweagent.run.benchmarks.swebench_single",
+        ["swebench-single"],
+        "Evaluate on SWE-bench (single instance)",
+    ),
 ]
 
 
